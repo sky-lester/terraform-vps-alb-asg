@@ -1,0 +1,156 @@
+provider "aws" {
+  region = "ap-southeast-1"  # Adjust to match the region of your availability zones
+}
+
+# VPC
+resource "aws_vpc" "terravpc" {
+  cidr_block = "10.0.0.0/16"
+  tags = {
+    Name = "terravpc"
+  }
+}
+
+# Subnets
+resource "aws_subnet" "public_subnet" {
+  count = 2
+  vpc_id     = aws_vpc.terravpc.id
+  cidr_block = cidrsubnet(aws_vpc.terravpc.cidr_block, 8, count.index)
+  map_public_ip_on_launch = true
+  availability_zone       = var.vpc_az[count.index]
+}
+
+# Internet Gateway
+resource "aws_internet_gateway" "igw" {
+  vpc_id = aws_vpc.terravpc.id
+}
+
+# Route Table for Public Subnets
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.terravpc.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.igw.id
+  }
+}
+
+resource "aws_route_table_association" "public_association" {
+  count          = 2
+  subnet_id      = aws_subnet.public_subnet[count.index].id
+  route_table_id = aws_route_table.public.id
+}
+
+# Security Group for ALB and EC2
+resource "aws_security_group" "alb_sg" {
+  vpc_id = aws_vpc.terravpc.id
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_security_group" "ec2_sg" {
+  vpc_id = aws_vpc.terravpc.id
+
+  ingress {
+    from_port       = 80
+    to_port         = 80
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb_sg.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+# Application Load Balancer (ALB)
+resource "aws_lb" "alb" {
+  name               = "alb"
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.alb_sg.id]
+  subnets            = aws_subnet.public_subnet[*].id
+}
+
+# Target Group
+resource "aws_lb_target_group" "tg" {
+  name     = "tg"
+  port     = 80
+  protocol = "HTTP"
+  vpc_id   = aws_vpc.terravpc.id
+
+  health_check {
+    path                = "/"
+    interval            = 30
+    timeout             = 5
+    healthy_threshold   = 2
+    unhealthy_threshold = 2
+  }
+}
+
+# ALB Listener
+resource "aws_lb_listener" "http_listener" {
+  load_balancer_arn = aws_lb.alb.arn
+  port              = 80
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.tg.arn
+  }
+}
+
+# Launch Template
+resource "aws_launch_template" "lt" {
+  name          = "ec2_lt"
+  image_id      = "ami-01811d4912b4ccb26"  # Ubuntu 20.04 LTS AMI (us-east-1)
+  instance_type = "t2.micro"
+  key_name      = "llr-keypair" 
+
+  network_interfaces {
+    associate_public_ip_address = true
+    security_groups             = [aws_security_group.ec2_sg.id]
+  }
+
+  user_data = filebase64("userdata.sh")
+}
+
+# Auto Scaling Group (ASG)
+resource "aws_autoscaling_group" "asg" {
+  desired_capacity     = 1
+  max_size             = 3
+  min_size             = 1
+  vpc_zone_identifier  = aws_subnet.public_subnet[*].id
+  target_group_arns    = [aws_lb_target_group.tg.arn]
+  launch_template {
+    id      = aws_launch_template.lt.id
+    version = "$Latest"
+  }
+
+  health_check_type = "ELB"
+  health_check_grace_period = 300
+
+  tag {
+    key                 = "Name"
+    value               = "web-server"
+    propagate_at_launch = true
+  }
+}
+
+# Output the ALB DNS name
+output "alb_dns_name" {
+  value = aws_lb.alb.dns_name
+}
