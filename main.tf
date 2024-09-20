@@ -1,5 +1,5 @@
 provider "aws" {
-  region = "ap-southeast-1"  # Adjust to match the region of your availability zones
+  region = "ap-southeast-1" # Adjust to match the region of your availability zones
 }
 
 # VPC
@@ -12,9 +12,9 @@ resource "aws_vpc" "terravpc" {
 
 # Subnets
 resource "aws_subnet" "public_subnet" {
-  count = 2
-  vpc_id     = aws_vpc.terravpc.id
-  cidr_block = cidrsubnet(aws_vpc.terravpc.cidr_block, 8, count.index)
+  count                   = 2
+  vpc_id                  = aws_vpc.terravpc.id
+  cidr_block              = cidrsubnet(aws_vpc.terravpc.cidr_block, 8, count.index)
   map_public_ip_on_launch = true
   availability_zone       = var.vpc_az[count.index]
 }
@@ -69,6 +69,13 @@ resource "aws_security_group" "ec2_sg" {
     security_groups = [aws_security_group.alb_sg.id]
   }
 
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -116,9 +123,9 @@ resource "aws_lb_listener" "http_listener" {
 # Launch Template
 resource "aws_launch_template" "lt" {
   name          = "ec2_lt"
-  image_id      = "ami-01811d4912b4ccb26"  # Ubuntu 20.04 LTS AMI (us-east-1)
+  image_id      = "ami-01811d4912b4ccb26" # Ubuntu 20.04 LTS AMI (us-east-1)
   instance_type = "t2.micro"
-  key_name      = "llr-keypair" 
+  key_name      = "llr-keypair"
 
   network_interfaces {
     associate_public_ip_address = true
@@ -126,21 +133,24 @@ resource "aws_launch_template" "lt" {
   }
 
   user_data = filebase64("userdata.sh")
+#   tags = {
+#     ScheduleShutdown = "true"
+#   }
 }
 
 # Auto Scaling Group (ASG)
 resource "aws_autoscaling_group" "asg" {
-  desired_capacity     = 1
-  max_size             = 3
-  min_size             = 1
-  vpc_zone_identifier  = aws_subnet.public_subnet[*].id
-  target_group_arns    = [aws_lb_target_group.tg.arn]
+  desired_capacity    = 1
+  max_size            = 3
+  min_size            = 1
+  vpc_zone_identifier = aws_subnet.public_subnet[*].id
+  target_group_arns   = [aws_lb_target_group.tg.arn]
   launch_template {
     id      = aws_launch_template.lt.id
     version = "$Latest"
   }
 
-  health_check_type = "ELB"
+  health_check_type         = "ELB"
   health_check_grace_period = 300
 
   tag {
