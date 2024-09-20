@@ -42,6 +42,7 @@ resource "aws_route_table_association" "public_association" {
 
 # Security Group for ALB and EC2
 resource "aws_security_group" "terra_alb_sg" {
+  name   = "terra-alb-sg"
   vpc_id = aws_vpc.terravpc.id
 
   ingress {
@@ -60,6 +61,7 @@ resource "aws_security_group" "terra_alb_sg" {
 }
 
 resource "aws_security_group" "terra_ec2_sg" {
+  name   = "terra-ec2-sg"
   vpc_id = aws_vpc.terravpc.id
 
   ingress {
@@ -126,7 +128,7 @@ resource "aws_launch_template" "terra_lt" {
   image_id      = "ami-01811d4912b4ccb26" # Ubuntu 20.04 LTS AMI (us-east-1)
   instance_type = "t2.micro"
   key_name      = "llr-keypair"
-  user_data = filebase64("userdata.sh")
+  user_data     = filebase64("userdata.sh")
 
   network_interfaces {
     associate_public_ip_address = true
@@ -140,6 +142,7 @@ resource "aws_launch_template" "terra_lt" {
 
 # Auto Scaling Group (ASG)
 resource "aws_autoscaling_group" "terra_asg" {
+  name                = "terra-asg"
   max_size            = 3
   desired_capacity    = 2
   min_size            = 2
