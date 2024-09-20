@@ -126,13 +126,13 @@ resource "aws_launch_template" "terra_lt" {
   image_id      = "ami-01811d4912b4ccb26" # Ubuntu 20.04 LTS AMI (us-east-1)
   instance_type = "t2.micro"
   key_name      = "llr-keypair"
+  user_data = filebase64("userdata.sh")
 
   network_interfaces {
     associate_public_ip_address = true
     security_groups             = [aws_security_group.terra_ec2_sg.id]
   }
 
-  user_data = filebase64("userdata.sh")
   #   tags = {
   #     ScheduleShutdown = "true"
   #   }
@@ -156,11 +156,6 @@ resource "aws_autoscaling_group" "terra_asg" {
   tag {
     key                 = "Name"
     value               = "terra-web-server"
-    propagate_at_launch = true
-  }
-  tag {
-    key                 = "ScheduleShutdown"
-    value               = "true"
     propagate_at_launch = true
   }
 }
