@@ -12,11 +12,11 @@ resource "aws_vpc" "terravpc" {
 
 # Subnets
 resource "aws_subnet" "public_subnet" {
-  count                   = 2
+  count                   = length(var.vpc_az)
   vpc_id                  = aws_vpc.terravpc.id
   cidr_block              = cidrsubnet(aws_vpc.terravpc.cidr_block, 8, count.index)
   map_public_ip_on_launch = true
-  availability_zone       = var.vpc_az[count.index]
+  availability_zone       = element(var.vpc_az, count.index)
 }
 
 # Internet Gateway
@@ -35,8 +35,8 @@ resource "aws_route_table" "public" {
 }
 
 resource "aws_route_table_association" "public_association" {
-  count          = 2
-  subnet_id      = aws_subnet.public_subnet[count.index].id
+  count          = length(var.vpc_az)
+  subnet_id      = element(aws_subnet.public_subnet[*].id, count.index)
   route_table_id = aws_route_table.public.id
 }
 
