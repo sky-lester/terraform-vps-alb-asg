@@ -20,7 +20,7 @@ resource "aws_subnet" "public_subnet" {
 }
 
 # Internet Gateway
-resource "aws_internet_gateway" "igw" {
+resource "aws_internet_gateway" "terra_igw" {
   vpc_id = aws_vpc.terravpc.id
 }
 
@@ -30,7 +30,7 @@ resource "aws_route_table" "public" {
 
   route {
     cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.igw.id
+    gateway_id = aws_internet_gateway.terra_igw.id
   }
 }
 
@@ -41,7 +41,7 @@ resource "aws_route_table_association" "public_association" {
 }
 
 # Security Group for ALB and EC2
-resource "aws_security_group" "alb_sg" {
+resource "aws_security_group" "terra_alb_sg" {
   vpc_id = aws_vpc.terravpc.id
 
   ingress {
@@ -59,14 +59,14 @@ resource "aws_security_group" "alb_sg" {
   }
 }
 
-resource "aws_security_group" "ec2_sg" {
+resource "aws_security_group" "terra_ec2_sg" {
   vpc_id = aws_vpc.terravpc.id
 
   ingress {
     from_port       = 80
     to_port         = 80
     protocol        = "tcp"
-    security_groups = [aws_security_group.alb_sg.id]
+    security_groups = [aws_security_group.terra_alb_sg.id]
   }
 
   ingress {
@@ -85,16 +85,16 @@ resource "aws_security_group" "ec2_sg" {
 }
 
 # Application Load Balancer (ALB)
-resource "aws_lb" "alb" {
-  name               = "alb"
+resource "aws_lb" "terra_alb" {
+  name               = "terra-alb"
   load_balancer_type = "application"
-  security_groups    = [aws_security_group.alb_sg.id]
+  security_groups    = [aws_security_group.terra_alb_sg.id]
   subnets            = aws_subnet.public_subnet[*].id
 }
 
 # Target Group
-resource "aws_lb_target_group" "tg" {
-  name     = "tg"
+resource "aws_lb_target_group" "terra_tg" {
+  name     = "terra-tg"
   port     = 80
   protocol = "HTTP"
   vpc_id   = aws_vpc.terravpc.id
@@ -110,43 +110,43 @@ resource "aws_lb_target_group" "tg" {
 
 # ALB Listener
 resource "aws_lb_listener" "http_listener" {
-  load_balancer_arn = aws_lb.alb.arn
+  load_balancer_arn = aws_lb.terra_alb.arn
   port              = 80
   protocol          = "HTTP"
 
   default_action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.tg.arn
+    target_group_arn = aws_lb_target_group.terra_tg.arn
   }
 }
 
 # Launch Template
-resource "aws_launch_template" "lt" {
-  name          = "ec2_lt"
+resource "aws_launch_template" "terra_lt" {
+  name          = "terra-lt"
   image_id      = "ami-01811d4912b4ccb26" # Ubuntu 20.04 LTS AMI (us-east-1)
   instance_type = "t2.micro"
   key_name      = "llr-keypair"
 
   network_interfaces {
     associate_public_ip_address = true
-    security_groups             = [aws_security_group.ec2_sg.id]
+    security_groups             = [aws_security_group.terra_ec2_sg.id]
   }
 
   user_data = filebase64("userdata.sh")
-#   tags = {
-#     ScheduleShutdown = "true"
-#   }
+  #   tags = {
+  #     ScheduleShutdown = "true"
+  #   }
 }
 
 # Auto Scaling Group (ASG)
-resource "aws_autoscaling_group" "asg" {
-  desired_capacity    = 1
+resource "aws_autoscaling_group" "terra_asg" {
   max_size            = 3
-  min_size            = 1
+  desired_capacity    = 2
+  min_size            = 2
   vpc_zone_identifier = aws_subnet.public_subnet[*].id
-  target_group_arns   = [aws_lb_target_group.tg.arn]
+  target_group_arns   = [aws_lb_target_group.terra_tg.arn]
   launch_template {
-    id      = aws_launch_template.lt.id
+    id      = aws_launch_template.terra_lt.id
     version = "$Latest"
   }
 
@@ -155,12 +155,17 @@ resource "aws_autoscaling_group" "asg" {
 
   tag {
     key                 = "Name"
-    value               = "web-server"
+    value               = "terra-web-server"
+    propagate_at_launch = true
+  }
+  tag {
+    key                 = "ScheduleShutdown"
+    value               = "true"
     propagate_at_launch = true
   }
 }
 
 # Output the ALB DNS name
 output "alb_dns_name" {
-  value = aws_lb.alb.dns_name
+  value = aws_lb.terra_alb.dns_name
 }
